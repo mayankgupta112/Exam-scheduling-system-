@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Candidate Registration - ExamPilot</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css"></head><body>
+<div class="top"><a class="logo" href="/">ExamPilot</a><nav><a href="/login.html">Login</a></nav></div>
+<div class="card wide">
+<div class="eye">EXAMPILOT · APPLICATION</div>
+<div id="formbox"><h1>Candidate Registration</h1><p class="sub">Enter your details to register for an examination.</p>
+<div class="err" id="err"></div>
+<form id="f" novalidate>
+<div class="f"><label for="exam">Examination name</label><select id="exam"><option value="">Loading...</option></select><div class="note" id="closes" style="margin-top:8px"></div></div>
+<div class="f"><label for="name">Full name</label><input id="name" autocomplete="name"></div>
+<div class="f"><label for="father">Father or guardian name</label><input id="father"></div>
+<div class="row"><div class="f"><label for="email">Email address</label><input id="email" type="email" autocomplete="email"></div>
+<div class="f"><label for="mobile">Mobile number</label><input id="mobile" inputmode="numeric" maxlength="10" placeholder="10-digit number"></div></div>
+<div class="f"><label for="dob">Date of birth</label><input id="dob" type="date"></div>
+<div class="row"><div class="f"><label for="state">State</label><select id="state"><option value="">Select state</option></select></div>
+<div class="f" id="dwrap"><label for="district">District</label><input id="district"></div></div>
+<div class="row"><div class="f"><label for="p1">Preferred centre 1</label><select id="p1"><option value="">Select centre</option></select></div>
+<div class="f"><label for="p2">Preferred centre 2</label><select id="p2"><option value="">Select centre</option></select></div></div>
+<div class="row"><div class="f"><label for="oe">Other exam you applied for (optional)</label><input id="oe" placeholder="e.g. NEET UG"></div>
+<div class="f"><label for="od">Its expected date (optional)</label><input id="od" type="date"></div></div>
+<div class="row"><div class="f"><label for="pw">Create password</label><input id="pw" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>
+<div class="f"><label for="pw2">Confirm password</label><input id="pw2" type="password" autocomplete="new-password"></div></div>
+<button id="go" type="submit">Submit Registration →</button></form>
+<p class="note">Applying for a second exam with the same email? Use the same password. Already registered? <a href="/login.html">Candidate login</a></p></div>
+<div class="ok" id="ok"><h1>You are registered</h1><p class="sub">Your registration ID</p><div class="id" id="rid"></div>
+<div id="qr" style="width:240px;margin:12px auto"></div><p class="note" id="payn">Scan with any UPI app to pay the exam fee.</p><p class="note" id="same"></p>
+<button onclick="location.href='/portal.html'">Open my dashboard</button></div>
+</div>
+<script>
+var $=function(i){return document.getElementById(i)},IN=null;
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function show(t){$("err").textContent=t;$("err").style.display=t?"block":"none"}
+function dist(){var up=$("state").value==="Uttar Pradesh",v=$("district").value;
+  $("dwrap").innerHTML='<label for="district">District</label>'+(up?'<select id="district"><option value="">Select district</option>'+IN.up.map(function(d){return'<option>'+esc(d)+'</option>'}).join("")+'</select>':'<input id="district">')}
+Promise.all([fetch("/india.json").then(function(r){return r.json()}),fetch("/api/options").then(function(r){return r.json()})]).then(function(a){
+  IN=a[0];var o=a[1];
+  $("state").innerHTML+=IN.states.map(function(s){return'<option>'+esc(s)+'</option>'}).join("");$("state").onchange=dist;
+  window.EX=o.exams;
+  $("exam").innerHTML=o.exams.length?'<option value="">Select examination</option>'+o.exams.map(function(e){return'<option value="'+e.id+'">'+esc(e.name)+'</option>'}).join(""):'<option value="">No examination is open for registration</option>';
+  $("exam").onchange=function(){var e=window.EX.filter(function(x){return x.id===$("exam").value})[0];$("closes").style.display=e?"block":"none";if(e)$("closes").textContent="Registration closes at "+new Date(e.close_at).toLocaleString()+(e.fee>0?" · Fee Rs. "+e.fee:"")};$("exam").onchange();
+  var c=o.centres.map(function(z){return'<option value="'+z.id+'">'+esc(z.name)+' - '+esc(z.district)+', '+esc(z.state)+'</option>'}).join("");
+  $("p1").innerHTML+=c;$("p2").innerHTML+=c;
+  if(!o.exams.length)show("No examination is open for registration right now.");else if(!o.centres.length)show("Exam centres are not available yet. Please check back later.");
+}).catch(function(){show("Cannot reach the server. Please try again.")});
+$("f").onsubmit=function(e){e.preventDefault();show("");
+  var b={exam:$("exam").value,name:$("name").value,father:$("father").value,email:$("email").value,mobile:$("mobile").value,dob:$("dob").value,state:$("state").value,district:$("district").value,prefs:[$("p1").value,$("p2").value],other_exam:$("oe").value,other_date:$("od").value,password:$("pw").value};
+  var L={exam:"Examination name",name:"Full name",father:"Father or guardian name",email:"Email address",mobile:"Mobile number",dob:"Date of birth",state:"State",district:"District"};
+  for(var k in L)if(!String(b[k]).trim()){show(L[k]+" is required.");return}
+  if(!b.prefs[0]||!b.prefs[1]){show("Select both preferred centres.");return}
+  if(b.prefs[0]===b.prefs[1]){show("Choose two different centres.");return}
+  if(b.password.length<6){show("Password must be at least 6 characters.");return}
+  if(b.password!==$("pw2").value){show("Passwords do not match.");return}
+  $("go").disabled=true;
+  fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json()}).then(function(j){
+    $("go").disabled=false;if(j.error){show(j.error);window.scrollTo(0,0);return}
+    try{localStorage.setItem("ep_token",j.token)}catch(e){}
+    $("formbox").style.display="none";$("ok").style.display="block";$("rid").textContent=j.reg;$("qr").innerHTML=j.qr;
+    $("payn").textContent="Scan with any UPI app to pay"+(j.fee>0?" Rs. "+j.fee:"")+". Your registration is already complete.";
+    if(j.sameName>0)$("same").textContent="Other candidates share your name. Always quote your registration ID.";
+  }).catch(function(){$("go").disabled=false;show("Cannot reach the server. Please try again.")});
+};
+</script></body></html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Candidate Login - ExamPilot</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css"></head><body><div class="top"><a class="logo" href="/">ExamPilot</a></div><div class="card">
+<div class="eye">EXAMPILOT · CANDIDATE</div>
+<div class="err" id="err"></div><div class="msg" id="msg"></div>
+
+<div id="v1"><h1>Candidate login</h1><p class="sub">See your seat and download your hall ticket.</p>
+<form id="f1"><div class="f"><label for="id1">Registration ID or email</label><input id="id1" autocomplete="username" placeholder="EP-2026-00001"></div>
+<div class="f"><label for="pw1">Password</label><input id="pw1" type="password" autocomplete="current-password"></div>
+<button type="submit">Log in →</button></form>
+<div class="links"><a href="#" id="toForgot">Forgot password?</a><a href="/register.html">New candidate? Register</a></div></div>
+
+<div id="v2" hidden><h1>Forgot password</h1><p class="sub">We will email a 6-digit OTP to your registered email address.</p>
+<form id="f2"><div class="f"><label for="id2">Registration ID or email</label><input id="id2"></div><button type="submit">Send OTP</button></form>
+<div class="links"><a href="#" class="back">Back to login</a></div></div>
+
+<div id="v3" hidden><h1>Enter OTP</h1><p class="sub">Type the OTP from your email (valid for 10 minutes) and choose a new password.</p>
+<form id="f3"><div class="f"><label for="otp">OTP</label><input id="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
+<div class="row"><div class="f"><label for="np">New password</label><input id="np" type="password" autocomplete="new-password"></div><div class="f"><label for="np2">Confirm password</label><input id="np2" type="password" autocomplete="new-password"></div></div>
+<button type="submit">Reset and log in</button></form>
+<div class="links"><button class="ghost" id="resend" type="button" disabled>Resend OTP</button><a href="#" class="back">Back to login</a></div></div>
+</div>
+<script>
+var $=function(i){return document.getElementById(i)},ident="",tm;
+function view(n){["v1","v2","v3"].forEach(function(v){$(v).hidden=v!=="v"+n});note("");msg("")}
+function note(t){$("err").textContent=t;$("err").style.display=t?"block":"none"}
+function msg(t){$("msg").textContent=t;$("msg").style.display=t?"block":"none"}
+function post(u,b){return fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json()}).catch(function(){return{error:"Cannot reach the server. Please try again."}})}
+function done(j){try{localStorage.setItem("ep_token",j.token)}catch(e){}location.href="/portal.html"}
+function cool(){var s=60,b=$("resend");b.disabled=true;clearInterval(tm);tm=setInterval(function(){s--;b.textContent=s>0?"Resend OTP in "+s+"s":"Resend OTP";if(s<=0){clearInterval(tm);b.disabled=false}},1000);b.textContent="Resend OTP in 60s"}
+$("toForgot").onclick=function(e){e.preventDefault();$("id2").value=$("id1").value;view(2)};
+document.querySelectorAll(".back").forEach(function(a){a.onclick=function(e){e.preventDefault();view(1)}});
+$("f1").onsubmit=function(e){e.preventDefault();note("");post("/api/login",{id:$("id1").value,password:$("pw1").value}).then(function(j){j.error?note(j.error):done(j)})};
+function sendOtp(){ident=$("id2").value.trim();if(!ident){note("Enter your registration ID or email.");return}
+  post("/api/forgot",{id:ident}).then(function(j){if(j.error){note(j.error);return}view(3);msg(j.message);cool()})}
+$("f2").onsubmit=function(e){e.preventDefault();sendOtp()};
+$("resend").onclick=function(){post("/api/forgot",{id:ident}).then(function(j){j.error?note(j.error):(msg("A new OTP has been sent if the account exists."),cool())})};
+$("f3").onsubmit=function(e){e.preventDefault();note("");
+  if($("np").value.length<6){note("Password must be at least 6 characters.");return}
+  if($("np").value!==$("np2").value){note("Passwords do not match.");return}
+  post("/api/reset",{id:ident,otp:$("otp").value,password:$("np").value}).then(function(j){j.error?note(j.error):done(j)})};
+</script></body></html>

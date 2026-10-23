@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>ExamPilot Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin.css"></head><body>
+<div id="app" style="display:contents"></div><div id="toast"></div><dialog id="dlg"></dialog>
+<script>
+var T="",S={cand:[],exam:[],cen:[],alloc:[]},IN={states:[],up:[]},view="overview",sel="",q="",qe="",report=null;
+try{T=sessionStorage.getItem("ep_admin")||""}catch(e){}
+var $=function(i){return document.getElementById(i)};
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function find(a,id){return S[a].filter(function(x){return x.id===id})[0]}
+function toast(t){var e=$("toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(function(){e.style.display="none"},4000)}
+function fmt(ms){return ms?new Date(ms).toLocaleString([],{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",second:"2-digit"}):"-"}
+async function api(m,u,b){try{var h={"Content-Type":"application/json"};if(T)h.Authorization="Bearer "+T;
+  var r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});var j=await r.json().catch(function(){return{}});
+  if(r.status===401&&T){logout();return{error:"Please log in again."}}if(!r.ok)return{error:j.error||"Something went wrong."};return j}catch(e){return{error:"Cannot reach the server."}}}
+function logout(){T="";try{sessionStorage.removeItem("ep_admin")}catch(e){}start()}
+async function load(){var r=await api("GET","/api/admin/all");if(r.error){toast(r.error);return}S=r;if(!find("exam",sel))sel=S.exam[0]?S.exam[0].id:""}
+function start(){if(!T){login();return}fetch("/india.json").then(function(r){return r.json()}).then(function(j){IN=j}).finally(function(){load().then(render)})}
+function login(){$("app").innerHTML='<div class="login"><div class="logo">ExamPilot</div><div class="sub" style="border:0">ADMIN PORTAL</div><div class="err" id="le"></div><div style="margin-bottom:14px"><label for="u">Username</label><input id="u" autocomplete="username"></div><div style="margin-bottom:16px"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"></div><button class="btn" id="lb" style="width:100%">Log in</button></div>';
+  var go=async function(){var r=await api("POST","/api/admin/login",{user:$("u").value,password:$("p").value});if(r.error){$("le").textContent=r.error;return}T=r.token;try{sessionStorage.setItem("ep_admin",T)}catch(e){}start()};
+  $("lb").onclick=go;$("p").onkeydown=function(e){if(e.key==="Enter")go()}}
+
+/* helpers */
+function regN(e){return S.cand.filter(function(c){return c.exam===e.id}).length}
+function alcN(e){return S.alloc.filter(function(a){return a.exam===e.id}).length}
+function isOpen(e){var n=Date.now();return e.open_at&&n>=e.open_at&&n<e.close_at}
+function stat(e){if(e.shifts>0)return'<span class="tag ok">Allocated</span>';if(!e.open_at)return'<span class="tag">Form not released</span>';if(isOpen(e))return'<span class="tag ok">Form open</span>';return'<span class="tag warn">Form closed</span>'}
+function regLine(e){return!e.open_at?"Form not released yet":isOpen(e)?"Form open until "+fmt(e.close_at):"Form closed at "+fmt(e.close_at)}
+function bar(n,t){return'<div class="bar"><i style="width:'+(t?Math.min(100,Math.round(n/t*100)):0)+'%"></i></div>'}
+function sOpts(list,v,lab){return list.map(function(x){return'<option value="'+x.id+'"'+(x.id===v?" selected":"")+'>'+esc(lab(x))+'</option>'}).join("")}
+function seatOf(c){var a=S.alloc.filter(function(x){return x.cand===c.id&&x.exam===c.exam})[0];if(!a)return'<span class="tag warn">Awaiting seat</span>';var z=find("cen",a.cen);return esc(z?z.name:"?")+'<br><span style="color:var(--mut)">'+esc(a.seat)+' · '+esc(a.when)+'</span>'}
+function form(title,fields,vals,onSave,hint){vals=vals||{};var d=$("dlg"),dl="";
+  d.innerHTML='<h2>'+title+'</h2>'+(hint?'<p class="lead" style="margin:6px 0 0">'+hint+'</p>':'')+'<div class="fg" style="margin-top:16px">'+fields.map(function(f){var v=vals[f.k]!=null?vals[f.k]:(f.def!=null?f.def:"");
+    if(f.dl)dl+='<datalist id="dl_'+f.k+'">'+f.dl.map(function(x){return'<option value="'+esc(x)+'">'}).join("")+'</datalist>';
+    var c=f.t==="select"?'<select id="f_'+f.k+'">'+f.o.map(function(o){return'<option value="'+esc(o[0])+'"'+(String(o[0])===String(v)?" selected":"")+'>'+esc(o[1])+'</option>'}).join("")+'</select>':'<input id="f_'+f.k+'" type="'+(f.t||"text")+'" value="'+esc(v)+'"'+(f.min!=null?' min="'+f.min+'"':'')+(f.dl?' list="dl_'+f.k+'"':'')+'>';
+    return'<div'+(f.full?' class="full"':'')+'><label for="f_'+f.k+'">'+f.l+(f.opt?'':' *')+'</label>'+c+'</div>'}).join("")+'</div>'+dl+'<div class="err" id="ferr"></div><div class="acts"><button class="btn g" id="fc">Cancel</button><button class="btn" id="fs">Save</button></div>';
+  d.showModal();$("fc").onclick=function(){d.close()};
+  $("fs").onclick=async function(){var o={};for(var i=0;i<fields.length;i++){var f=fields[i],x=$("f_"+f.k).value.trim();if(!x&&!f.opt){$("ferr").textContent=f.l+" is required.";return}o[f.k]=x}
+    var e=await onSave(o);if(e){$("ferr").textContent=e;return}d.close();await load();render()}}
+function confirmDel(msg,fn){var d=$("dlg");d.innerHTML='<h2>Are you sure?</h2><p>'+esc(msg)+'</p><div class="acts"><button class="btn g" id="fc">Cancel</button><button class="btn g d" id="fs">Confirm</button></div>';d.showModal();
+  $("fc").onclick=function(){d.close()};$("fs").onclick=async function(){d.close();var r=await fn();if(r&&r.error)toast(r.error);await load();render()}}
+var TOP10=["JEE Main","NEET UG","CUET UG","UPSC Civil Services Prelims","SSC CGL","SSC CHSL","IBPS PO","SBI PO","RRB NTPC","GATE"];
+function examForm(id){var e=id?find("exam",id):{};form(id?"Rename examination":"New examination",[{k:"name",l:"Exam name (pick or type)",full:1,dl:TOP10}],e,function(o){return api(id?"PUT":"POST","/api/admin/exams"+(id?"/"+id:""),o).then(function(r){return r.error})})}
+function openForm(id){form("Release registration form",[{k:"minutes",l:"Keep the form open for (minutes)",t:"number",min:1,def:10,full:1}],{},function(o){return api("POST","/api/admin/exams/"+id+"/open",o).then(function(r){if(!r.error)toast("Form is live. It closes automatically.");return r.error})},"Candidates can register from now until the time runs out. You can also close it earlier.")}
+function schedForm(id){var e=find("exam",id);form("Timing and plan: "+esc(e.name),[
+  {k:"date",l:"Exam date",t:"date"},{k:"time",l:"First shift start time",t:"time",def:"10:00"},{k:"dur",l:"Exam duration (minutes)",t:"number",min:1,def:120},{k:"gap",l:"Gap between shifts (minutes)",t:"number",min:0,def:60},
+  {k:"day_end",l:"Last shift must end by",t:"time",def:"18:00"},{k:"alloc_mode",l:"Seat allocation",t:"select",o:[["after_close","After the form closes"],["instant","Instantly after each registration"]],def:"after_close"},
+  {k:"alloc_delay",l:"Allocate this many minutes after form closes",t:"number",min:0,def:1},{k:"ticket_delay",l:"Hall tickets open this many minutes after form closes (1440 = 1 day)",t:"number",min:0,def:1},
+  {k:"slip_days",l:"Date slip shows this many days before exam",t:"number",min:0,def:4},{k:"exam_days",l:"Number of exam days (e.g. 3)",t:"number",min:1,def:1},{k:"threshold",l:"Move clashing candidates to another day only if clashes on a day reach",t:"number",min:1,def:1000},{k:"fee",l:"Exam fee in Rs. (0 = no amount on QR)",t:"number",min:0,def:0}],e,
+  function(o){return api("PUT","/api/admin/exams/"+id+"/schedule",o).then(function(r){return r.error})},"The AI uses this to decide shifts, date and times. Hall tickets show them.")}
+function cenForm(id){var c=id?find("cen",id):{};form(id?"Edit centre":"Add exam centre",[{k:"name",l:"Centre name",full:1},{k:"address",l:"Address",full:1},{k:"state",l:"State",t:"select",o:[["","Select state"]].concat(IN.states.map(function(s){return[s,s]}))},{k:"district",l:"District (Uttar Pradesh: pick from list)",dl:IN.up},{k:"cap",l:"Seats per shift",t:"number",min:1,full:1}],c,function(o){return api(id?"PUT":"POST","/api/admin/centres"+(id?"/"+id:""),o).then(function(r){return r.error})})}
+function moveForm(id){var a=find("alloc",id),ex=find("exam",a.exam),sh=Math.max(ex.shifts,1);
+  form("Change centre",[{k:"cen",l:"New centre",t:"select",full:1,o:S.cen.filter(function(c){return c.id!==a.cen}).map(function(c){var u=S.alloc.filter(function(x){return x.cen===c.id&&x.exam===a.exam}).length;return[c.id,c.name+" ("+(c.cap*sh-u)+" seats free)"]})}],{},function(o){
+    return api("PUT","/api/admin/allocations/"+id+"/move",o).then(function(r){if(!r.error)toast("Moved. New seat "+r.seat+".");return r.error})})}
+
+/* views */
+var NAV=[["overview","Overview"],["cand","Candidates"],["exam","Examinations"],["cen","Exam centres"],["alloc","AI seat allocation"]];
+function exSel(id){return'<select id="'+id+'">'+(id==="qe"?'<option value="">All exams</option>':'')+sOpts(S.exam,id==="qe"?qe:sel,function(e){return e.name})+'</select>'}
+function vOverview(){var wait=S.cand.filter(function(c){return!S.alloc.some(function(a){return a.cand===c.id&&a.exam===c.exam})}).length;
+  return'<div class="crumb">Workspace / Overview</div><h1>Good day, Admin</h1><p class="lead">Release a form, candidates register, AI allocates seats, hall tickets open on your timing.</p>'+
+  '<div class="stats"><div class="stat"><span>Total candidates</span><b>'+S.cand.length+'</b></div><div class="stat"><span>Examinations</span><b>'+S.exam.length+'</b></div><div class="stat"><span>Exam centres</span><b>'+S.cen.length+'</b></div><div class="stat"><span>Awaiting seat</span><b>'+wait+'</b></div></div>'+
+  '<div class="panel"><div class="head"><div><h2>Examinations</h2><p>Registered, allocated and still waiting</p></div><button class="btn" data-v="exam">Manage examinations</button></div>'+
+  (S.exam.length?S.exam.map(function(e){var r=regN(e),a=alcN(e);return'<div style="padding:14px 0;border-top:1px solid var(--line)"><div class="head" style="margin:0 0 8px"><div><b>'+esc(e.name)+'</b> '+stat(e)+'<p>'+regLine(e)+(e.shifts>0?' · '+e.shifts+' shift(s)':'')+'</p></div><button class="btn g s" data-go="'+e.id+'">Open allocation</button></div>'+bar(a,r)+'<span style="color:var(--mut)">'+r+' registered · '+a+' allocated · '+(r-a)+' waiting</span></div>'}).join(""):'<div class="empty">No examinations yet. Open Examinations and add the top 10 exams, or create your own.</div>')+'</div>'}
+function vCand(){var l=S.cand.filter(function(c){var s=q.toLowerCase();return(!qe||c.exam===qe)&&(!s||(c.name+c.reg+c.mobile+c.father+c.email).toLowerCase().indexOf(s)>-1)}).reverse();
+  return'<div class="crumb">Workspace / Candidates</div><h1>Candidates</h1><div class="panel"><div class="head xc"><input id="q" style="flex:1;min-width:200px" placeholder="Search name, ID, mobile, email, father name" value="'+esc(q)+'">'+exSel("qe")+'</div>'+
+  (l.length?'<div class="tw"><table><tr><th>Reg. ID</th><th>Name</th><th>Father</th><th>DOB</th><th>Contact</th><th>Home</th><th>Exam</th><th>Preferences</th><th>Other exam</th><th>Seat</th><th>Payment</th><th></th></tr>'+l.map(function(c){var e=find("exam",c.exam);
+    return'<tr><td>'+esc(c.reg)+'</td><td>'+esc(c.name)+'</td><td>'+esc(c.father)+'</td><td>'+esc(c.dob)+'</td><td>'+esc(c.mobile)+'<br><span style="color:var(--mut)">'+esc(c.email)+'</span></td><td>'+esc(c.district)+', '+esc(c.state)+'</td><td>'+esc(e?e.name:"-")+'</td><td>'+c.prefs.map(function(p,i){var z=find("cen",p);return(i+1)+'. '+esc(z?z.name:"removed")}).join("<br>")+'</td><td>'+(c.other_date?esc(c.other_exam||"Other")+'<br><span style="color:var(--mut)">'+esc(c.other_date)+'</span>':'-')+'</td><td>'+seatOf(c)+'</td><td><button class="btn g s" data-paid="'+c.id+'" data-v2="'+(c.paid?0:1)+'">'+(c.paid?'Paid ✓':'Mark paid')+'</button></td><td><button class="btn g s d" data-del="'+c.id+'">Delete</button></td></tr>'}).join("")+'</table></div>':'<div class="empty">No candidates found.</div>')+'</div>'}
+function vExam(){return'<div class="crumb">Workspace / Examinations</div><h1>Examinations</h1><p class="lead">Add an exam, set its timing and plan, then release the form for as long as you want.</p><div class="panel"><div class="head"><h2>All examinations</h2><div class="xc"><button class="btn g" data-a="top10">Add top 10 exams</button><button class="btn" data-a="newexam">New examination</button></div></div>'+
+  (S.exam.length?'<div class="tw"><table><tr><th>Name</th><th>Registration form</th><th>Registered</th><th>Allocated</th><th>Plan</th><th></th></tr>'+S.exam.map(function(e){
+    return'<tr><td><b>'+esc(e.name)+'</b><br>'+stat(e)+'</td><td>'+regLine(e)+'</td><td>'+regN(e)+'</td><td>'+alcN(e)+'</td><td>'+(e.date?esc(e.date)+', '+esc(e.time)+' · '+e.dur+' min':'<span class="tag warn">Not planned</span>')+'</td><td style="white-space:nowrap">'+
+    (isOpen(e)?'<button class="btn s" data-closenow="'+e.id+'">Close form now</button> ':'<button class="btn s" data-open="'+e.id+'">Release form</button> ')+'<button class="btn g s" data-sched="'+e.id+'">Timing and plan</button> <button class="btn g s" data-ee="'+e.id+'">Rename</button> <button class="btn g s d" data-ed="'+e.id+'">Delete</button></td></tr>'}).join("")+'</table></div>':'<div class="empty">No examinations yet. Press "Add top 10 exams" or create your own.</div>')+'</div>'}
+function vCen(){var e=find("exam",sel),sh=e&&e.shifts>0?e.shifts:1;
+  return'<div class="crumb">Workspace / Exam centres</div><h1>Exam centres</h1><div class="panel"><div class="head"><div class="xc"><h2>All centres</h2>'+(S.exam.length?'<span style="color:var(--mut)">Seat usage for</span>'+exSel("sel"):'')+'</div><button class="btn" data-a="newcen">Add centre</button></div>'+
+  (S.cen.length?'<div class="tw"><table><tr><th>Code</th><th>Centre</th><th>Address</th><th>District, State</th><th>Seats / shift</th><th>Allocated / remaining</th><th></th></tr>'+S.cen.map(function(c){var u=S.alloc.filter(function(a){return a.cen===c.id&&a.exam===sel}).length,t=c.cap*sh;
+    return'<tr><td>'+esc(c.code)+'</td><td>'+esc(c.name)+'</td><td>'+esc(c.address)+'</td><td>'+esc(c.district)+', '+esc(c.state)+'</td><td>'+c.cap+'</td><td>'+bar(u,t)+u+' used · '+(t-u)+' left</td><td style="white-space:nowrap"><button class="btn g s" data-ce="'+c.id+'">Edit</button> <button class="btn g s d" data-cd="'+c.id+'">Delete</button></td></tr>'}).join("")+'</table></div>':'<div class="empty">No centres yet. Add centres with their seats per shift.</div>')+'</div>'}
+function vAlloc(){var H='<div class="crumb">Workspace / AI seat allocation</div><h1>AI seat allocation</h1>';if(!S.exam.length)return H+'<div class="empty">Create an examination first.</div>';
+  var e=find("exam",sel),r=regN(e),a=alcN(e),sh=Math.max(e.shifts,1),ta=e.close_at?e.close_at+(e.ticket_delay||0)*60000:null,al=e.close_at?e.close_at+(e.alloc_delay||0)*60000:null;
+  var tk=e.ticket_mode==="released"?"Released by you":e.ticket_mode==="held"?"Held by you":(ta?"Opens "+fmt(ta):"After form closes");
+  var h=H+'<p class="lead">The AI places each candidate at their preferred centre, works out shifts and assigns seat numbers.</p><div class="panel"><div class="head"><div class="xc"><h2>Timeline</h2>'+exSel("sel")+'</div><button class="btn g s" data-sched="'+e.id+'">Timing and plan</button></div>'+
+  '<div class="stats" style="margin-bottom:14px"><div class="stat"><span>Registered</span><b>'+r+'</b></div><div class="stat"><span>Allocated</span><b>'+a+'</b></div><div class="stat"><span>Waiting</span><b>'+(r-a)+'</b></div><div class="stat"><span>Shifts</span><b>'+(e.shifts||"-")+'</b></div></div>'+
+  '<div class="tw"><table><tr><td><b>Registration form</b></td><td>'+regLine(e)+'</td></tr><tr><td><b>Exam</b></td><td>'+(e.date?esc(e.date)+', '+esc(e.time)+' · '+e.dur+' min':'<span class="tag warn">Not planned. Open Timing and plan.</span>')+'</td></tr>'+
+  '<tr><td><b>Seat allocation</b></td><td>'+(e.alloc_done?'Done':e.alloc_mode==="instant"?'Instant after each registration':al?'Automatic at '+fmt(al):'After form closes')+(e.alloc_note?'<br><span class="tag warn">'+esc(e.alloc_note)+'</span>':'')+'</td></tr>'+
+  '<tr><td><b>Hall tickets</b></td><td>'+tk+'</td></tr><tr><td><b>Exam date slip</b></td><td>'+(e.slip_released?'Released by you':'Shows '+(e.slip_days==null?4:e.slip_days)+' day(s) before the exam')+'</td></tr></table></div>'+
+  '<div class="xc" style="margin-top:16px"><button class="btn" data-a="run">Run AI allocation now</button><button class="btn g" data-tk="released">Open hall tickets now</button><button class="btn g" data-tk="held">Hold hall tickets</button><button class="btn g" data-tk="auto">Hall tickets: automatic</button><button class="btn g" data-slip="1">Release date slip now</button></div></div>';
+  if(e.clash){var c=e.clash,th=e.threshold||1000,mx=Math.max.apply(null,c.days.map(function(n){return n.count}));h+='<div class="panel"><h2>Date clash check</h2><p class="lead" style="margin:4px 0 12px">Candidates with a clash are moved to another exam day only when clashes on one day reach <b>'+th+'</b>. Everyone else keeps their date. '+((e.exam_days||1)<2?'<b>This exam has 1 day, so there is no other day to move to. Set more exam days in Timing and plan.</b>':'')+'</p>'+bar(mx,th)+'<p>Highest clashes on one day: '+mx+' of '+th+' · '+c.requests+' waiting clash report(s) from the date slip</p><div class="tw"><table><tr>'+c.days.map(function(n){return'<th>Day '+esc(n.date)+'</th>'}).join("")+'</tr><tr>'+c.days.map(function(n){return'<td>'+n.count+' clashing candidate(s)</td>'}).join("")+'</tr></table></div></div>'}
+  if(report&&report.exam===sel){var p=report;h+='<div class="panel"><h2>Allocation report</h2><p class="lead" style="margin-top:4px">'+p.allocated+' candidate(s) allocated'+(p.waiting?' · <b>'+p.waiting+' still waiting</b>':'')+'</p>'+(p.swaps&&(p.swaps.moved+p.swaps.swapped+p.swaps.stuck)?'<div class="note"><b>Date clashes:</b> '+p.swaps.moved+' moved to a free seat on another day · '+p.swaps.swapped+' swapped with a non-clashing candidate'+(p.swaps.stuck?' · <b>'+p.swaps.stuck+' could not be moved</b> (no seat on another day)':'')+'</div>':'')+'<div class="stats" style="margin-bottom:12px"><div class="stat"><span>Got 1st preference</span><b>'+p.first+'</b></div><div class="stat"><span>Got 2nd preference</span><b>'+p.second+'</b></div><div class="stat"><span>Nearest available</span><b>'+p.nearest+'</b></div><div class="stat"><span>Shifts</span><b>'+p.shifts+'</b></div></div><p>'+p.shifts+' shift(s) · '+p.perDay+' per day · '+p.days+' day(s) from '+esc(p.firstDate)+' to '+esc(p.lastDate)+'</p></div>'}
+  h+='<div class="panel"><h2 style="margin-bottom:12px">Centre seats</h2><div class="tw"><table><tr><th>Centre</th><th>Seats / shift</th><th>Total ('+sh+' shift'+(sh>1?'s':'')+')</th><th>Allocated</th><th>Remaining</th></tr>'+S.cen.map(function(c){var u=S.alloc.filter(function(x){return x.cen===c.id&&x.exam===sel}).length,t=c.cap*sh;
+    return'<tr><td>'+esc(c.name)+'</td><td>'+c.cap+'</td><td>'+t+'</td><td>'+bar(u,t)+u+'</td><td><b>'+(t-u)+'</b></td></tr>'}).join("")+'</table></div></div>';
+  var l=S.alloc.filter(function(x){return x.exam===sel});
+  h+='<div class="panel"><h2 style="margin-bottom:12px">Allocation results</h2>'+(l.length?'<div class="tw"><table><tr><th>Seat no.</th><th>Candidate</th><th>Reg. ID</th><th>Centre</th><th>Shift · date and time</th><th></th></tr>'+l.map(function(x){var c=find("cand",x.cand),z=find("cen",x.cen);
+    return'<tr><td><b>'+esc(x.seat)+'</b></td><td>'+esc(c?c.name:"?")+'<br><span style="color:var(--mut)">s/o '+esc(c?c.father:"")+'</span></td><td>'+esc(c?c.reg:"")+'</td><td>'+esc(z?z.name:"?")+(x.moved.length?'<br><span class="tag warn">Changed from '+esc(x.moved[x.moved.length-1])+'</span>':'')+'</td><td>Shift '+x.shift+' · '+esc(x.when)+'</td><td style="white-space:nowrap"><button class="btn g s" data-mv="'+x.id+'">Change centre</button> <button class="btn g s d" data-rm="'+x.id+'">Remove</button></td></tr>'}).join("")+'</table></div>':'<div class="empty">No seats allocated yet.</div>')+'</div>';
+  return h}
+function render(){var h={overview:vOverview,cand:vCand,exam:vExam,cen:vCen,alloc:vAlloc}[view]();
+  $("app").innerHTML='<aside><div class="logo">ExamPilot</div><div class="sub">ADMIN PORTAL</div><nav>'+NAV.map(function(n){return'<button data-v="'+n[0]+'" class="'+(n[0]===view?"on":"")+'">'+n[1]+'</button>'}).join("")+'</nav><button class="btn g out" data-a="logout">Log out</button></aside><main>'+h+'</main>';
+  var s=$("q");if(s)s.oninput=function(){q=s.value;var p=s.selectionStart;render();var n=$("q");n.focus();n.setSelectionRange(p,p)};
+  var x=$("qe");if(x)x.onchange=function(){qe=x.value;render()};var y=$("sel");if(y)y.onchange=function(){sel=y.value;render()}}
+async function act(m,u,b,msg){var r=await api(m,u,b);if(r.error)toast(r.error);else if(msg)toast(msg);await load();render();return r}
+document.addEventListener("click",async function(ev){var b=ev.target.closest("button");if(!b)return;var D=b.dataset;
+  if(D.v){view=D.v;q="";render();return}if(D.go){sel=D.go;view="alloc";render();return}if(D.a==="logout"){logout();return}
+  if(D.a==="newexam")examForm();if(D.a==="newcen")cenForm();if(D.ee)examForm(D.ee);if(D.ce)cenForm(D.ce);if(D.mv)moveForm(D.mv);if(D.open)openForm(D.open);if(D.sched)schedForm(D.sched);
+  if(D.a==="top10")act("POST","/api/admin/exams/top10",null,"Top 10 exams added.");
+  if(D.closenow)act("POST","/api/admin/exams/"+D.closenow+"/close",null,"Form closed.");
+  if(D.tk)act("POST","/api/admin/exams/"+sel+"/tickets",{mode:D.tk},"Hall ticket setting saved.");
+  if(D.slip)act("POST","/api/admin/exams/"+sel+"/slip",{release:true},"Date slip released.");
+  if(D.paid)act("PUT","/api/admin/candidates/"+D.paid+"/paid",{paid:D.v2==="1"});
+  if(D.ed)confirmDel("This exam, its candidates and their seats will be deleted.",function(){return api("DELETE","/api/admin/exams/"+D.ed)});
+  if(D.cd)confirmDel("This centre and its seat allocations will be deleted. Run the AI allocation again to re-seat those candidates.",function(){return api("DELETE","/api/admin/centres/"+D.cd)});
+  if(D.del)confirmDel("This candidate and their seat will be deleted.",function(){return api("DELETE","/api/admin/candidates/"+D.del)});
+  if(D.rm)confirmDel("This seat will be released and the candidate will wait for the next AI run.",function(){return api("DELETE","/api/admin/allocations/"+D.rm)});
+  if(D.a==="run"){b.disabled=true;b.textContent="Allocating...";var r=await api("POST","/api/admin/allocate",{exam:sel});
+    if(r.error)toast(r.error);else{r.exam=sel;report=r;toast("Done. "+r.allocated+" candidate(s) allocated.")}await load();render()}});
+setInterval(function(){if(T&&!document.querySelector("dialog[open]")&&["overview","exam","alloc"].indexOf(view)>-1)load().then(render)},5000);
+start();
+</script></body></html>

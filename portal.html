@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Dashboard - ExamPilot</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css"></head><body>
+<div class="top"><a class="logo" href="/">ExamPilot</a></div>
+<div class="card wide" id="c"><p class="sub">Loading...</p></div>
+<script>
+var tok="",D=null,timer=null;try{tok=localStorage.getItem("ep_token")||""}catch(e){}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function out(){try{localStorage.removeItem("ep_token")}catch(e){}location.href="/login.html"}
+function put(h){document.getElementById("c").innerHTML=h}
+function lo(){fetch("/api/logout",{method:"POST",headers:{Authorization:"Bearer "+tok}}).finally(out)}
+function J(m,u,b){return fetch(u,{method:m,headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},body:b?JSON.stringify(b):undefined}).then(function(r){if(r.status===401){out();return{}}return r.json()})}
+function clash(reg){var o=prompt("Which other exam is on this date? (optional)")||"";J("POST","/api/clash",{reg:reg,other:o}).then(function(j){alert(j.error||(j.moved?"The exam date has been updated to "+j.moved+".":"Your request is recorded. The date changes only if enough candidates report the same clash."));load()})}
+function view(){
+  var h='<div class="eye noprint">EXAMPILOT · CANDIDATE</div><h1 class="noprint">My registrations</h1><p class="sub noprint">'+esc(D.email)+'</p>';var wait=false;
+  D.items.forEach(function(c){
+    h+='<div class="step" style="margin-bottom:18px"><b style="width:auto;border-radius:10px;padding:0 12px;display:inline-block;height:auto;line-height:28px">'+esc(c.exam)+'</b> <span class="noprint" style="color:#6b6a85">'+esc(c.reg)+'</span>';
+    if(c.slip)h+='<div class="ticket" style="margin-top:14px"><h2 style="font-size:20px">Exam Date Slip</h2><dl><dt>Candidate</dt><dd>'+esc(c.name)+'</dd><dt>Exam date</dt><dd class="seat" style="font-size:22px">'+esc(c.slip.date)+'</dd></dl>'+(c.slip.note?'<div class="msg" style="display:block;margin:14px 0 0">'+esc(c.slip.note)+'</div>':'')+
+      (c.canClash?'<div class="bar noprint"><button class="ghost" onclick="clash(\''+esc(c.reg)+'\')">I have another exam on this date</button></div>':c.clashed?'<p class="note noprint">Your clash request is recorded.</p>':'')+'<p class="note noprint">Centre, shift and seat appear on your hall ticket.</p></div>';
+    if(c.ticketReady){
+      var z=c.centre,s=c.schedule;
+      h+=(c.changed?'<div class="msg noprint" style="display:block">Your exam centre was changed. Use the latest hall ticket.</div>':'')+'<div class="ticket"><h2>Hall Ticket</h2><div style="color:#6b6a85">'+esc(c.exam)+'</div><dl><dt>Candidate</dt><dd>'+esc(c.name)+'</dd><dt>Father / guardian</dt><dd>'+esc(c.father)+'</dd><dt>Date of birth</dt><dd>'+esc(c.dob)+'</dd><dt>Registration ID</dt><dd>'+esc(c.reg)+'</dd>'+
+      '<dt>Exam date</dt><dd>'+esc(s.date)+'</dd><dt>Shift</dt><dd>Shift '+esc(c.shift)+'</dd><dt>Start time</dt><dd>'+esc(s.start)+'</dd><dt>Duration</dt><dd>'+esc(s.dur)+' minutes (ends '+esc(s.end)+')</dd><dt>Centre</dt><dd>'+esc(z.name)+', '+esc(z.address)+', '+esc(z.district)+', '+esc(z.state)+'</dd><dt>Seat number</dt><dd class="seat">'+esc(c.seat)+'</dd></dl></div>'+
+      '<div class="bar noprint"><button onclick="window.print()">Download hall ticket (PDF)</button></div>';
+    }else if(c.allocated){wait=true;h+='<p style="margin-top:14px"><span class="tag">Seat allotted</span></p><p class="note">Your hall ticket will be available'+(c.ticketAt?' at '+new Date(c.ticketAt).toLocaleString():' soon')+'. This page refreshes by itself.</p>'}
+    else{wait=true;h+='<p style="margin-top:14px"><span class="tag">Seat not allotted yet</span></p><p class="note">Your centre and seat will be allotted after registration closes.</p>'}
+    h+='</div>';
+  });
+  h+='<div class="bar noprint"><button class="ghost" onclick="lo()">Log out</button></div>';put(h);
+  clearTimeout(timer);if(wait)timer=setTimeout(load,10000);
+}
+function load(){J("GET","/api/me").then(function(d){if(!d)return;if(d.error){put('<p class="err" style="display:block">'+esc(d.error)+'</p>');return}D=d;view()}).catch(function(){put('<p class="err" style="display:block">Cannot reach the server.</p>')})}
+if(!tok)out();else load();
+</script></body></html>
